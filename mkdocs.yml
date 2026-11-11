@@ -1,0 +1,11 @@
+site_name: Моя документация
+site_description: Документация проекта
+
+theme:
+  name: material
+  language: ru
+
+nav:
+  - Главная: index.md
+  - О проекте: about.md
+  - Руководство: guide.md
