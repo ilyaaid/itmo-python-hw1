@@ -1,4 +1,4 @@
-name: Deploy to REG.RU
+name: Deploy site
 
 on:
   push:
@@ -8,7 +8,7 @@ permissions:
   contents: read
 
 jobs:
-  deploy:
+  build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -21,6 +21,41 @@ jobs:
         run: |
           python -m pip install -r requirements.txt
           python -m mkdocs build --strict
+
+      - name: Upload site files for REG.RU
+        uses: actions/upload-artifact@v4
+        with:
+          name: site-files
+          path: site/
+
+      - name: Upload GitHub Pages artifact
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: site
+
+  deploy-pages:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
+
+  deploy-regru:
+    needs: deploy-pages
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download built site
+        uses: actions/download-artifact@v4
+        with:
+          name: site-files
+          path: site
 
       - name: Copy site via SCP
         uses: appleboy/scp-action@v1
