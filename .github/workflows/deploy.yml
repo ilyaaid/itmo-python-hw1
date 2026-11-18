@@ -7,6 +7,9 @@ on:
 permissions:
   contents: read
 
+env:
+  HEALTHCHECK_EXPECTED_TEXT: ${{ vars.HEALTHCHECK_EXPECTED_TEXT }}
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -37,20 +40,36 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     permissions:
+      contents: read
       pages: write
       id-token: write
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
 
+      - name: Check published site
+        env:
+          SITE_URL: ${{ steps.deployment.outputs.page_url }}
+        run: bash .github/scripts/check-site.sh "$SITE_URL"
+
   deploy-regru:
     needs: deploy-pages
     runs-on: ubuntu-latest
+    env:
+      DEPLOY_DOMAIN: aleldm.online
     steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
       - name: Download built site
         uses: actions/download-artifact@v4
         with:
@@ -65,5 +84,10 @@ jobs:
           key: ${{ secrets.DEPLOY_KEY }}
           port: 22
           source: "site/**"
-          target: "/var/www/${{ secrets.DEPLOY_USER }}/data/www/aleldm.online"
+          target: "/var/www/${{ secrets.DEPLOY_USER }}/data/www/${{ env.DEPLOY_DOMAIN }}"
           strip_components: 1
+
+      - name: Check published site
+        env:
+          SITE_URL: https://${{ env.DEPLOY_DOMAIN }}/
+        run: bash .github/scripts/check-site.sh "$SITE_URL"
