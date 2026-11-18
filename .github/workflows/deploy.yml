@@ -2,18 +2,46 @@ name: Deploy site
 
 on:
   push:
-    branches: [main]
+    branches: ['**']
+
+concurrency:
+  group: site-deploy-${{ github.ref }}
+  cancel-in-progress: false
 
 permissions:
   contents: read
 
 env:
+  DEPLOY_DOMAIN: aleldm.online
   HEALTHCHECK_EXPECTED_TEXT: ${{ vars.HEALTHCHECK_EXPECTED_TEXT }}
 
 jobs:
   build:
+    if: ${{ !github.event.deleted }}
     runs-on: ubuntu-latest
+    outputs:
+      is_main: ${{ steps.destination.outputs.is_main }}
+      site_host: ${{ steps.destination.outputs.site_host }}
     steps:
+      - name: Resolve deploy destination
+        id: destination
+        shell: bash
+        run: |
+          is_main=true
+          site_host=$DEPLOY_DOMAIN
+          if [[ "$GITHUB_REF_NAME" != main ]]; then
+            is_main=false
+            export LC_ALL=C
+            slug=$(printf '%s' "$GITHUB_REF_NAME" | tr '[:upper:]' '[:lower:]' |
+              sed -E 's/[^a-z0-9]+/-/g; s/^-//; s/-$//')
+            slug=${slug:0:42}
+            slug=${slug%-}
+            branch_hash=$(printf '%s' "$GITHUB_REF_NAME" | sha256sum | cut -c1-12)
+            label="preview-${slug:-branch}-$branch_hash"
+            site_host="$label.$DEPLOY_DOMAIN"
+          fi
+          printf 'is_main=%s\nsite_host=%s\n' "$is_main" "$site_host" >> "$GITHUB_OUTPUT"
+
       - uses: actions/checkout@v4
 
       - uses: actions/setup-python@v5
@@ -32,12 +60,14 @@ jobs:
           path: site/
 
       - name: Upload GitHub Pages artifact
+        if: steps.destination.outputs.is_main == 'true'
         uses: actions/upload-pages-artifact@v4
         with:
           path: site
 
   deploy-pages:
     needs: build
+    if: needs.build.outputs.is_main == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -61,10 +91,11 @@ jobs:
         run: bash .github/scripts/check-site.sh "$SITE_URL"
 
   deploy-regru:
-    needs: deploy-pages
+    needs: [build, deploy-pages]
+    if: >-
+      ${{ !cancelled() && needs.build.result == 'success' &&
+          (needs.build.outputs.is_main == 'false' || needs.deploy-pages.result == 'success') }}
     runs-on: ubuntu-latest
-    env:
-      DEPLOY_DOMAIN: aleldm.online
     steps:
       - uses: actions/checkout@v4
         with:
@@ -84,10 +115,12 @@ jobs:
           key: ${{ secrets.DEPLOY_KEY }}
           port: 22
           source: "site/**"
-          target: "/var/www/${{ secrets.DEPLOY_USER }}/data/www/${{ env.DEPLOY_DOMAIN }}"
+          target: "/var/www/${{ secrets.DEPLOY_USER }}/data/www/${{ needs.build.outputs.site_host }}"
           strip_components: 1
 
       - name: Check published site
         env:
-          SITE_URL: https://${{ env.DEPLOY_DOMAIN }}/
-        run: bash .github/scripts/check-site.sh "$SITE_URL"
+          SITE_URL: https://${{ needs.build.outputs.site_host }}/
+        run: |
+          bash .github/scripts/check-site.sh "$SITE_URL"
+          printf 'Published site: <%s>\n' "$SITE_URL" >> "$GITHUB_STEP_SUMMARY"
