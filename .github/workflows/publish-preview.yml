@@ -28,16 +28,15 @@ jobs:
           name: site-files
           path: site
 
-      - name: Copy site via SCP
-        uses: appleboy/scp-action@v1
+      - name: Copy site via rsync
+        uses: burnett01/rsync-deployments@9.0.1
         with:
-          host: ${{ secrets.DEPLOY_HOST }}
-          username: ${{ secrets.DEPLOY_USER }}
-          key: ${{ secrets.DEPLOY_KEY }}
-          port: 22
-          source: "site/**"
-          target: "/var/www/${{ secrets.DEPLOY_USER }}/data/www/${{ inputs.site_host }}"
-          strip_components: 1
+          switches: -rtz
+          path: site/
+          remote_host: ${{ secrets.DEPLOY_HOST }}
+          remote_user: ${{ secrets.DEPLOY_USER }}
+          remote_key: ${{ secrets.DEPLOY_KEY }}
+          remote_path: "/var/www/${{ secrets.DEPLOY_USER }}/data/www/${{ inputs.site_host }}/"
 
       - name: Check published site
         env:

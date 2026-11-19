@@ -9,5 +9,5 @@ theme:
 
 nav:
   - Главная: index.md
-  - О проекте: about.md
-  - Руководство: guide.md
+  - T4: t4.md
+  - P4: p4.md
