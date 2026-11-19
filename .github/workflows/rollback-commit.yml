@@ -15,8 +15,16 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
+      - name: Require main for manual launch
+        run: |
+          if [[ "$GITHUB_REF" != refs/heads/main ]]; then
+            echo '::error::Select main in the Run workflow branch menu.'
+            exit 1
+          fi
+
       - uses: actions/checkout@v4
         with:
+          ref: main
           fetch-depth: 0
 
       - name: Validate requested commit
@@ -25,6 +33,7 @@ jobs:
         run: |
           [[ "$COMMIT_SHA" =~ ^[a-fA-F0-9]{40}$ ]] || exit 1
           git cat-file -e "$COMMIT_SHA^{commit}"
+          git merge-base --is-ancestor "$COMMIT_SHA" origin/main
 
       - uses: actions/checkout@v4
         with:
