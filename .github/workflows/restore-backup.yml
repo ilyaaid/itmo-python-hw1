@@ -25,16 +25,17 @@ jobs:
             exit 1
           fi
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       - name: Restore previous version over SSH
-        uses: appleboy/ssh-action@v1
+        uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2 # v1
         env:
           DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
         with:
           host: ${{ secrets.DEPLOY_HOST }}
           username: ${{ secrets.DEPLOY_USER }}
           key: ${{ secrets.DEPLOY_KEY }}
+          fingerprint: ${{ secrets.DEPLOY_FINGERPRINT || 'missing-deploy-fingerprint' }}
           port: 22
           envs: DEPLOY_USER,DEPLOY_DOMAIN
           script: |

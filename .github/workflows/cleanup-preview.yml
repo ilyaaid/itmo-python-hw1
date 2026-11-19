@@ -17,7 +17,7 @@ jobs:
     env:
       DEPLOY_DOMAIN: aleldm.online
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       - name: Resolve deleted preview
         id: destination
@@ -39,7 +39,7 @@ jobs:
 
       - name: Remove preview directory on REG.RU
         if: steps.destination.outputs.site_host != ''
-        uses: appleboy/ssh-action@v1
+        uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2 # v1
         env:
           PREVIEW_HOST: ${{ steps.destination.outputs.site_host }}
           DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
@@ -47,6 +47,7 @@ jobs:
           host: ${{ secrets.DEPLOY_HOST }}
           username: ${{ secrets.DEPLOY_USER }}
           key: ${{ secrets.DEPLOY_KEY }}
+          fingerprint: ${{ secrets.DEPLOY_FINGERPRINT || 'missing-deploy-fingerprint' }}
           port: 22
           envs: PREVIEW_HOST,DEPLOY_DOMAIN,DEPLOY_USER
           script: |

@@ -13,10 +13,10 @@ jobs:
       DEPLOY_DOMAIN: aleldm.online
       HEALTHCHECK_EXPECTED_TEXT: ${{ vars.HEALTHCHECK_EXPECTED_TEXT }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       - name: Download built site
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: site-files
           path: site
@@ -25,13 +25,14 @@ jobs:
         run: echo "DEPLOY_STARTED_MS=$(date +%s%3N)" >> "$GITHUB_ENV"
 
       - name: Prepare upload directory
-        uses: appleboy/ssh-action@v1
+        uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2 # v1
         env:
           DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
         with:
           host: ${{ secrets.DEPLOY_HOST }}
           username: ${{ secrets.DEPLOY_USER }}
           key: ${{ secrets.DEPLOY_KEY }}
+          fingerprint: ${{ secrets.DEPLOY_FINGERPRINT || 'missing-deploy-fingerprint' }}
           port: 22
           envs: DEPLOY_USER,DEPLOY_DOMAIN
           script: |
@@ -41,7 +42,7 @@ jobs:
             rm -rf -- "$staging/next"
 
       - name: Copy site via rsync
-        uses: burnett01/rsync-deployments@9.0.1
+        uses: burnett01/rsync-deployments@155b6d6c1219ab2224c20c58d423a3f1b850395f # 9.0.1
         with:
           switches: -rtz
           path: site/
@@ -54,13 +55,14 @@ jobs:
         run: echo "ACTIVATION_STARTED_MS=$(date +%s%3N)" >> "$GITHUB_ENV"
 
       - name: Publish and save previous version
-        uses: appleboy/ssh-action@v1
+        uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2 # v1
         env:
           DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
         with:
           host: ${{ secrets.DEPLOY_HOST }}
           username: ${{ secrets.DEPLOY_USER }}
           key: ${{ secrets.DEPLOY_KEY }}
+          fingerprint: ${{ secrets.DEPLOY_FINGERPRINT || 'missing-deploy-fingerprint' }}
           port: 22
           envs: DEPLOY_USER,DEPLOY_DOMAIN
           script: |
