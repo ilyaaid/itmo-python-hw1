@@ -3,9 +3,10 @@ name: Deploy site
 on:
   push:
     branches: ['**']
+  delete:
 
 concurrency:
-  group: site-deploy-${{ github.ref }}
+  group: site-deploy-${{ github.event_name == 'delete' && format('refs/heads/{0}', github.event.ref) || (github.event.deleted && github.run_id) || github.ref }}
   cancel-in-progress: false
 
 permissions:
@@ -17,32 +18,25 @@ env:
 
 jobs:
   build:
-    if: ${{ !github.event.deleted }}
+    if: github.event_name == 'push' && !github.event.deleted
     runs-on: ubuntu-latest
     outputs:
       is_main: ${{ steps.destination.outputs.is_main }}
       site_host: ${{ steps.destination.outputs.site_host }}
     steps:
+      - uses: actions/checkout@v4
+
       - name: Resolve deploy destination
         id: destination
         shell: bash
         run: |
-          is_main=true
-          site_host=$DEPLOY_DOMAIN
-          if [[ "$GITHUB_REF_NAME" != main ]]; then
-            is_main=false
-            export LC_ALL=C
-            slug=$(printf '%s' "$GITHUB_REF_NAME" | tr '[:upper:]' '[:lower:]' |
-              sed -E 's/[^a-z0-9]+/-/g; s/^-//; s/-$//')
-            slug=${slug:0:42}
-            slug=${slug%-}
-            branch_hash=$(printf '%s' "$GITHUB_REF_NAME" | sha256sum | cut -c1-12)
-            label="preview-${slug:-branch}-$branch_hash"
-            site_host="$label.$DEPLOY_DOMAIN"
+          site_host=$(bash .github/scripts/site-host.sh "$GITHUB_REF_NAME" "$DEPLOY_DOMAIN")
+          if [[ "$site_host" == "$DEPLOY_DOMAIN" ]]; then
+            echo 'is_main=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'is_main=false' >> "$GITHUB_OUTPUT"
           fi
-          printf 'is_main=%s\nsite_host=%s\n' "$is_main" "$site_host" >> "$GITHUB_OUTPUT"
-
-      - uses: actions/checkout@v4
+          printf 'site_host=%s\n' "$site_host" >> "$GITHUB_OUTPUT"
 
       - uses: actions/setup-python@v5
         with:
@@ -98,8 +92,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          persist-credentials: false
+
+      - name: Verify preview branch still exists
+        if: needs.build.outputs.is_main == 'false'
+        run: git ls-remote --exit-code --refs origin "refs/heads/$GITHUB_REF_NAME" > /dev/null
 
       - name: Download built site
         uses: actions/download-artifact@v4
@@ -124,3 +120,52 @@ jobs:
         run: |
           bash .github/scripts/check-site.sh "$SITE_URL"
           printf 'Published site: <%s>\n' "$SITE_URL" >> "$GITHUB_STEP_SUMMARY"
+
+  cleanup-preview:
+    if: github.event_name == 'delete' && github.event.ref_type == 'branch'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve deleted preview
+        id: destination
+        env:
+          BRANCH_NAME: ${{ github.event.ref }}
+        shell: bash
+        run: |
+          if [[ "$BRANCH_NAME" == main ]]; then
+            exit 0
+          fi
+
+          if git ls-remote --exit-code --refs origin "refs/heads/$BRANCH_NAME" > /dev/null; then
+            echo 'Branch exists again. Skipping preview cleanup.'
+            exit 0
+          else
+            status=$?
+            [[ "$status" == 2 ]] || exit "$status"
+          fi
+
+          site_host=$(bash .github/scripts/site-host.sh "$BRANCH_NAME" "$DEPLOY_DOMAIN")
+          printf 'site_host=%s\n' "$site_host" >> "$GITHUB_OUTPUT"
+
+      - name: Remove preview directory on REG.RU
+        if: steps.destination.outputs.site_host != ''
+        uses: appleboy/ssh-action@v1
+        env:
+          PREVIEW_HOST: ${{ steps.destination.outputs.site_host }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_KEY }}
+          port: 22
+          envs: PREVIEW_HOST,DEPLOY_DOMAIN,DEPLOY_USER
+          script: |
+            set -eu
+            preview_label=${PREVIEW_HOST%."$DEPLOY_DOMAIN"}
+            if [ "$PREVIEW_HOST" != "$preview_label.$DEPLOY_DOMAIN" ] ||
+               ! printf '%s\n' "$preview_label" | LC_ALL=C grep -Eq '^preview-[a-z0-9-]{1,42}-[a-f0-9]{12}$'; then
+              printf '%s\n' 'Invalid preview hostname' >&2
+              exit 1
+            fi
+            rm -rf -- "/var/www/$DEPLOY_USER/data/www/$PREVIEW_HOST"
