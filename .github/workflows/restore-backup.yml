@@ -1,0 +1,49 @@
+name: Restore previous published version
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  restore:
+    runs-on: ubuntu-latest
+    concurrency:
+      group: aleldm-production
+      cancel-in-progress: false
+      queue: max
+    env:
+      DEPLOY_DOMAIN: aleldm.online
+      HEALTHCHECK_EXPECTED_TEXT: ${{ vars.HEALTHCHECK_EXPECTED_TEXT }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Restore previous version over SSH
+        uses: appleboy/ssh-action@v1
+        env:
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_KEY }}
+          port: 22
+          envs: DEPLOY_USER,DEPLOY_DOMAIN
+          script: |
+            set -eu
+            site="/var/www/$DEPLOY_USER/data/www/$DEPLOY_DOMAIN"
+            backups="/var/www/$DEPLOY_USER/data/.site-backups/$DEPLOY_DOMAIN"
+            test -d "$backups/previous"
+            rm -rf -- "$backups/restore-next" "$backups/current" "$backups/older"
+            cp -a "$backups/previous" "$backups/restore-next"
+            mv "$site" "$backups/current"
+            if ! mv "$backups/restore-next" "$site"; then
+              mv "$backups/current" "$site"
+              exit 1
+            fi
+            mv "$backups/previous" "$backups/older"
+            mv "$backups/current" "$backups/previous"
+            rm -rf -- "$backups/older"
+
+      - name: Check restored site
+        run: bash .github/scripts/check-site.sh "https://$DEPLOY_DOMAIN/"

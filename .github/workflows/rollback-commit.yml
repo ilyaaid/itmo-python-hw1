@@ -1,0 +1,52 @@
+name: Publish an earlier commit
+
+on:
+  workflow_dispatch:
+    inputs:
+      commit_sha:
+        description: Full commit SHA to publish on the main site
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Validate requested commit
+        env:
+          COMMIT_SHA: ${{ inputs.commit_sha }}
+        run: |
+          [[ "$COMMIT_SHA" =~ ^[a-fA-F0-9]{40}$ ]] || exit 1
+          git cat-file -e "$COMMIT_SHA^{commit}"
+
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.commit_sha }}
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Build requested site
+        run: |
+          python -m pip install -r requirements.txt
+          python -m mkdocs build --strict
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: site-files
+          path: site/
+          if-no-files-found: error
+          retention-days: 90
+
+  publish:
+    needs: build
+    uses: ./.github/workflows/publish-production.yml
+    secrets: inherit

@@ -1,0 +1,85 @@
+name: Publish production files
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    concurrency:
+      group: aleldm-production
+      cancel-in-progress: false
+      queue: max
+    env:
+      DEPLOY_DOMAIN: aleldm.online
+      HEALTHCHECK_EXPECTED_TEXT: ${{ vars.HEALTHCHECK_EXPECTED_TEXT }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download built site
+        uses: actions/download-artifact@v4
+        with:
+          name: site-files
+          path: site
+
+      - name: Prepare upload directory
+        uses: appleboy/ssh-action@v1
+        env:
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_KEY }}
+          port: 22
+          envs: DEPLOY_USER,DEPLOY_DOMAIN
+          script: |
+            set -eu
+            staging="/var/www/$DEPLOY_USER/data/.site-staging/$DEPLOY_DOMAIN"
+            mkdir -p "$staging"
+            rm -rf -- "$staging/next"
+
+      - name: Copy site via SCP
+        uses: appleboy/scp-action@v1
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_KEY }}
+          port: 22
+          source: "site/**"
+          target: "/var/www/${{ secrets.DEPLOY_USER }}/data/.site-staging/${{ env.DEPLOY_DOMAIN }}/next"
+          strip_components: 1
+
+      - name: Publish and save previous version
+        uses: appleboy/ssh-action@v1
+        env:
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_KEY }}
+          port: 22
+          envs: DEPLOY_USER,DEPLOY_DOMAIN
+          script: |
+            set -eu
+            site="/var/www/$DEPLOY_USER/data/www/$DEPLOY_DOMAIN"
+            staging="/var/www/$DEPLOY_USER/data/.site-staging/$DEPLOY_DOMAIN"
+            backups="/var/www/$DEPLOY_USER/data/.site-backups/$DEPLOY_DOMAIN"
+            test -f "$staging/next/index.html"
+            mkdir -p "$backups"
+            rm -rf -- "$backups/current" "$backups/older"
+            mv "$site" "$backups/current"
+            if ! mv "$staging/next" "$site"; then
+              mv "$backups/current" "$site"
+              exit 1
+            fi
+            if [ -d "$backups/previous" ]; then
+              mv "$backups/previous" "$backups/older"
+            fi
+            mv "$backups/current" "$backups/previous"
+            rm -rf -- "$backups/older"
+
+      - name: Check published site
+        run: bash .github/scripts/check-site.sh "https://$DEPLOY_DOMAIN/"

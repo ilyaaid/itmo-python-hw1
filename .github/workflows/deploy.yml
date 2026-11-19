@@ -3,11 +3,11 @@ name: Deploy site
 on:
   push:
     branches: ['**']
-  delete:
 
 concurrency:
-  group: site-deploy-${{ github.event_name == 'delete' && format('refs/heads/{0}', github.event.ref) || (github.event.deleted && github.run_id) || github.ref }}
+  group: site-deploy-${{ github.ref }}
   cancel-in-progress: false
+  queue: max
 
 permissions:
   contents: read
@@ -18,7 +18,7 @@ env:
 
 jobs:
   build:
-    if: github.event_name == 'push' && !github.event.deleted
+    if: ${{ !github.event.deleted }}
     runs-on: ubuntu-latest
     outputs:
       is_main: ${{ steps.destination.outputs.is_main }}
@@ -47,11 +47,13 @@ jobs:
           python -m pip install -r requirements.txt
           python -m mkdocs build --strict
 
-      - name: Upload site files for REG.RU
+      - name: Upload built site
         uses: actions/upload-artifact@v4
         with:
           name: site-files
           path: site/
+          if-no-files-found: error
+          retention-days: 90
 
       - name: Upload GitHub Pages artifact
         if: steps.destination.outputs.is_main == 'true'
@@ -84,88 +86,16 @@ jobs:
           SITE_URL: ${{ steps.deployment.outputs.page_url }}
         run: bash .github/scripts/check-site.sh "$SITE_URL"
 
-  deploy-regru:
+  deploy-production:
     needs: [build, deploy-pages]
-    if: >-
-      ${{ !cancelled() && needs.build.result == 'success' &&
-          (needs.build.outputs.is_main == 'false' || needs.deploy-pages.result == 'success') }}
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
+    if: needs.build.outputs.is_main == 'true' && needs.deploy-pages.result == 'success'
+    uses: ./.github/workflows/publish-production.yml
+    secrets: inherit
 
-      - name: Verify preview branch still exists
-        if: needs.build.outputs.is_main == 'false'
-        run: git ls-remote --exit-code --refs origin "refs/heads/$GITHUB_REF_NAME" > /dev/null
-
-      - name: Download built site
-        uses: actions/download-artifact@v4
-        with:
-          name: site-files
-          path: site
-
-      - name: Copy site via SCP
-        uses: appleboy/scp-action@v1
-        with:
-          host: ${{ secrets.DEPLOY_HOST }}
-          username: ${{ secrets.DEPLOY_USER }}
-          key: ${{ secrets.DEPLOY_KEY }}
-          port: 22
-          source: "site/**"
-          target: "/var/www/${{ secrets.DEPLOY_USER }}/data/www/${{ needs.build.outputs.site_host }}"
-          strip_components: 1
-
-      - name: Check published site
-        env:
-          SITE_URL: https://${{ needs.build.outputs.site_host }}/
-        run: |
-          bash .github/scripts/check-site.sh "$SITE_URL"
-          printf 'Published site: <%s>\n' "$SITE_URL" >> "$GITHUB_STEP_SUMMARY"
-
-  cleanup-preview:
-    if: github.event_name == 'delete' && github.event.ref_type == 'branch'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Resolve deleted preview
-        id: destination
-        env:
-          BRANCH_NAME: ${{ github.event.ref }}
-        shell: bash
-        run: |
-          if [[ "$BRANCH_NAME" == main ]]; then
-            exit 0
-          fi
-
-          if git ls-remote --exit-code --refs origin "refs/heads/$BRANCH_NAME" > /dev/null; then
-            echo 'Branch exists again. Skipping preview cleanup.'
-            exit 0
-          else
-            status=$?
-            [[ "$status" == 2 ]] || exit "$status"
-          fi
-
-          site_host=$(bash .github/scripts/site-host.sh "$BRANCH_NAME" "$DEPLOY_DOMAIN")
-          printf 'site_host=%s\n' "$site_host" >> "$GITHUB_OUTPUT"
-
-      - name: Remove preview directory on REG.RU
-        if: steps.destination.outputs.site_host != ''
-        uses: appleboy/ssh-action@v1
-        env:
-          PREVIEW_HOST: ${{ steps.destination.outputs.site_host }}
-          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
-        with:
-          host: ${{ secrets.DEPLOY_HOST }}
-          username: ${{ secrets.DEPLOY_USER }}
-          key: ${{ secrets.DEPLOY_KEY }}
-          port: 22
-          envs: PREVIEW_HOST,DEPLOY_DOMAIN,DEPLOY_USER
-          script: |
-            set -eu
-            preview_label=${PREVIEW_HOST%."$DEPLOY_DOMAIN"}
-            if [ "$PREVIEW_HOST" != "$preview_label.$DEPLOY_DOMAIN" ] ||
-               ! printf '%s\n' "$preview_label" | LC_ALL=C grep -Eq '^preview-[a-z0-9-]{1,42}-[a-f0-9]{12}$'; then
-              printf '%s\n' 'Invalid preview hostname' >&2
-              exit 1
-            fi
-            rm -rf -- "/var/www/$DEPLOY_USER/data/www/$PREVIEW_HOST"
+  deploy-preview:
+    needs: build
+    if: needs.build.outputs.is_main == 'false'
+    uses: ./.github/workflows/publish-preview.yml
+    with:
+      site_host: ${{ needs.build.outputs.site_host }}
+    secrets: inherit
