@@ -77,6 +77,9 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Start GitHub Pages timer
+        run: echo "DEPLOY_STARTED_MS=$(date +%s%3N)" >> "$GITHUB_ENV"
+
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
@@ -85,6 +88,14 @@ jobs:
         env:
           SITE_URL: ${{ steps.deployment.outputs.page_url }}
         run: bash .github/scripts/check-site.sh "$SITE_URL"
+
+      - name: Report GitHub Pages time
+        if: always()
+        run: |
+          if [[ -z "${DEPLOY_STARTED_MS:-}" ]]; then exit 0; fi
+          elapsed_ms=$(( $(date +%s%3N) - DEPLOY_STARTED_MS ))
+          printf '### GitHub Pages\n\nПубликация и healthcheck: %d.%03d с\n' \
+            "$((elapsed_ms / 1000))" "$((elapsed_ms % 1000))" >> "$GITHUB_STEP_SUMMARY"
 
   deploy-production:
     needs: [build, deploy-pages]

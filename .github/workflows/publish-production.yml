@@ -21,6 +21,9 @@ jobs:
           name: site-files
           path: site
 
+      - name: Start REG.RU timer
+        run: echo "DEPLOY_STARTED_MS=$(date +%s%3N)" >> "$GITHUB_ENV"
+
       - name: Prepare upload directory
         uses: appleboy/ssh-action@v1
         env:
@@ -47,6 +50,9 @@ jobs:
           source: "site/**"
           target: "/var/www/${{ secrets.DEPLOY_USER }}/data/.site-staging/${{ env.DEPLOY_DOMAIN }}/next"
           strip_components: 1
+
+      - name: Start activation timer
+        run: echo "ACTIVATION_STARTED_MS=$(date +%s%3N)" >> "$GITHUB_ENV"
 
       - name: Publish and save previous version
         uses: appleboy/ssh-action@v1
@@ -77,5 +83,21 @@ jobs:
             mv "$backups/current" "$backups/previous"
             rm -rf -- "$backups/older"
 
+      - name: Stop activation timer
+        run: echo "ACTIVATION_FINISHED_MS=$(date +%s%3N)" >> "$GITHUB_ENV"
+
       - name: Check published site
         run: bash .github/scripts/check-site.sh "https://$DEPLOY_DOMAIN/"
+
+      - name: Report REG.RU time
+        if: always()
+        run: |
+          if [[ -z "${DEPLOY_STARTED_MS:-}" ]]; then exit 0; fi
+          elapsed_ms=$(( $(date +%s%3N) - DEPLOY_STARTED_MS ))
+          printf '### REG.RU\n\nПубликация и healthcheck: %d.%03d с\n' \
+            "$((elapsed_ms / 1000))" "$((elapsed_ms % 1000))" >> "$GITHUB_STEP_SUMMARY"
+          if [[ -n "${ACTIVATION_STARTED_MS:-}" && -n "${ACTIVATION_FINISHED_MS:-}" ]]; then
+            activation_ms=$((ACTIVATION_FINISHED_MS - ACTIVATION_STARTED_MS))
+            printf 'Замена сайта и сохранение бекапа: %d.%03d с\n' \
+              "$((activation_ms / 1000))" "$((activation_ms % 1000))" >> "$GITHUB_STEP_SUMMARY"
+          fi
