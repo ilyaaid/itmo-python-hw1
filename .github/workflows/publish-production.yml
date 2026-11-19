@@ -9,10 +9,6 @@ permissions:
 jobs:
   publish:
     runs-on: ubuntu-latest
-    concurrency:
-      group: aleldm-production
-      cancel-in-progress: false
-      queue: max
     env:
       DEPLOY_DOMAIN: aleldm.online
       HEALTHCHECK_EXPECTED_TEXT: ${{ vars.HEALTHCHECK_EXPECTED_TEXT }}

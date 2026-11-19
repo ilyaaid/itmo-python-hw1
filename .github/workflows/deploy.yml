@@ -5,7 +5,7 @@ on:
     branches: ['**']
 
 concurrency:
-  group: site-deploy-${{ github.ref }}
+  group: ${{ github.ref == 'refs/heads/main' && 'aleldm-production' || format('site-deploy-{0}', github.ref) }}
   cancel-in-progress: false
   queue: max
 
