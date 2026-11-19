@@ -1,19 +1,15 @@
-# Welcome to MkDocs (lab 1)
+# Добро пожаловать
 
-# Test restore 
+Это небольшой сайт с заметками о проекте и его публикации. Здесь можно посмотреть, как выглядят заголовки, ссылки, списки и блоки кода в теме MkDocs.
 
-For full documentation visit [mkdocs.org](https://www.mkdocs.org).
+Начните со страницы [«О проекте»](about.md), а затем откройте [руководство](guide.md). Переключатель оформления в верхней панели позволяет выбрать светлый или тёмный режим. При первом открытии сайт учитывает настройки системы.
 
-## Commands
+## Что здесь есть
 
-* `mkdocs new [dir-name]` - Create a new project.
-* `mkdocs serve` - Start the live-reloading docs server.
-* `mkdocs build` - Build the documentation site.
-* `mkdocs -h` - Print help message and exit.
+- Короткое описание проекта и структуры документации.
+- Команды для локальной сборки и просмотра сайта.
+- Заметки о публикации основной версии и preview веток.
 
-## Project layout
+## Test restore
 
-    mkdocs.yml    # The configuration file.
-    docs/
-        index.md  # The documentation homepage.
-        ...       # Other markdown pages, images and other files.
+Эта заметка оставлена для проверки возврата к предыдущей опубликованной версии.
