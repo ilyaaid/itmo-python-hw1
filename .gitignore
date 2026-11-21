@@ -6,3 +6,6 @@ site/
 build/
 dist/
 .deploy/
+
+.DS_Store
+
